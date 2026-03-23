@@ -1,0 +1,24 @@
+smart-budget-tracker/
+├── tracker/                  # Django project config
+│   ├── __init__.py
+│   ├── settings.py           # MySQL configured
+│   ├── urls.py               # Root URLs
+│   └── wsgi.py
+├── smarty/                   # Main app
+│   ├── migrations/
+│   ├── static/smarty/        # CSS/JS
+│   ├── templates/smarty/     # All templates
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py             # Consolidated models
+│   ├── parsers.py            # PDF processing
+│   ├── services.py           # Business logic
+│   ├── urls.py               # App URLs
+│   └── views.py
+├── manage.py
+└── requirements.txt          # With mysqlclientpython manage.py makemigrations
+python manage.py migrate
+
+
+
+SecurePass123!  # MySQL password in settings.py
