@@ -1,0 +1,7 @@
+Architecture to upgrade in django 
+
+
+Prjoect name : tracker 
+App name : smarty 
+
+
