@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Smart Budget ML System
 
 Smart Budget ML System is a transition of the original Smart Budget Management System from a single Django upload flow into a modular, ML-ready architecture.
