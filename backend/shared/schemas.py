@@ -1,0 +1,49 @@
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+CategoryLiteral = Literal[
+    "cash_withdrawal",
+    "extra",
+    "lunch",
+    "other",
+    "recharge",
+    "tea",
+    "credit",
+]
+
+
+class CategoryMappingIn(BaseModel):
+    keyword: str = Field(min_length=1, max_length=100)
+    category: CategoryLiteral
+
+
+class TransactionOut(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    date: str
+    description: str
+    amount: Decimal
+    type: Literal["debit", "credit"]
+    balance: Decimal = Decimal("0.00")
+    category: CategoryLiteral = "other"
+
+
+class DailySummaryOut(BaseModel):
+    date: str
+    cash_withdrawal: Decimal = Decimal("0.00")
+    extra: Decimal = Decimal("0.00")
+    lunch: Decimal = Decimal("0.00")
+    other: Decimal = Decimal("0.00")
+    recharge: Decimal = Decimal("0.00")
+    tea: Decimal = Decimal("0.00")
+    credit: Decimal = Decimal("0.00")
+    total_debit: Decimal = Decimal("0.00")
+    total_credit: Decimal = Decimal("0.00")
+
+
+class ParsePdfResponse(BaseModel):
+    transactions: list[TransactionOut]
+    summaries: list[DailySummaryOut]
