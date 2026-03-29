@@ -1,14 +1,17 @@
-from backend.services.categorization import HybridTransactionCategorizer
+from backend.fastapi_service.parser.categorizer import build_keyword_map, categorize_description
 
 
-def test_rule_based_food_category_from_keyword() -> None:
-    categorizer = HybridTransactionCategorizer()
-    decision = categorizer.categorize('Paid to hostel mess for dinner', counterparty='hostel mess', direction='debit')
-    assert decision.category == 'mess'
-    assert decision.source == 'rule'
+def test_build_keyword_map_normalizes_keys_and_categories() -> None:
+    mappings = [
+        {"keyword": "  zOmAtO ", "category": "LUNCH"},
+        {"keyword": "", "category": "tea"},
+    ]
+
+    result = build_keyword_map(mappings)
+
+    assert result == {"ZOMATO": "lunch"}
 
 
-def test_credit_defaults_to_income() -> None:
-    categorizer = HybridTransactionCategorizer()
-    decision = categorizer.categorize('TRANSFER FROM salary account', counterparty='company payroll', direction='credit')
-    assert decision.category == 'income'
+def test_categorization_falls_back_to_other_when_not_mapped() -> None:
+    keyword_map = {"SWIGGY": "lunch"}
+    assert categorize_description("IMPS PAYMENT", keyword_map) == "other"

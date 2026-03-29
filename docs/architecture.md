@@ -1,47 +1,20 @@
-# Architecture
+# BudgetIQ Backend Architecture
 
-## System Design
+## Pipeline
+1. Django receives PDF upload via `/upload-pdf`.
+2. Django fetches current keyword mappings from `category_mapping`.
+3. Django calls FastAPI `/parse-pdf` with file + password + mapping payload.
+4. FastAPI extracts PDF rows using `pdfplumber` and parses SBI date format (`01 Jul 2024`).
+5. FastAPI categorizes transactions by keyword matching.
+6. FastAPI returns `transactions` and `summaries` JSON.
+7. Django persists raw rows into `transactions` and upserts `daily_expense_summary`.
 
-```text
-PDF / YONO SBI statement
-        |
-        v
-backend.utils.parsing.StatementParser
-        |
-        v
-backend.services.categorization.HybridTransactionCategorizer
-        |
-        +--> Rule-based decision from counterparty + keyword config
-        |
-        +--> ML classifier fallback when artifacts are available
-        |
-        v
-backend.services.transaction_service.TransactionIngestionService
-        |
-        v
-SQLAlchemy normalized store (database/connection/smart_budget.db)
-        |
-        +--> FastAPI read APIs
-        |
-        +--> ML dataset export and training pipeline
-
-Legacy compatibility path:
-Django upload view -> shared parser/categorizer -> Django Raw_Transaction + DailyTransactionSummary tables
-```
-
-## Data Flow
-
-1. A statement PDF is uploaded through the Django page or the FastAPI import route.
-2. The parser extracts transaction rows from table structures first and falls back to text parsing.
-3. Each transaction is normalized into date, description, debit, credit, balance, amount, and counterparty fields.
-4. The hybrid categorizer applies deterministic rules first and falls back to the ML classifier when available.
-5. Transactions are stored in the normalized `transactions` table with category, channel, amount, and deduplication fingerprint.
-6. Analytics APIs aggregate transactions by date range, category, and month.
-7. The ML dataset export uses stored transactions to build labeled training CSVs.
-
-## Key Improvements
-
-- Removed hardcoded database credentials from runtime code.
-- Added a normalized persistence model for API and ML workflows.
-- Preserved the existing Django upload experience during the transition.
-- Separated parsing, categorization, persistence, analytics, and ML training concerns.
+## Components
+- backend/django_app/models.py: strict schema tables
+- backend/django_app/views.py: upload + category mapping APIs
+- backend/django_app/services/db_service.py: persistence logic
+- backend/fastapi_service/main.py: parser service entrypoint
+- backend/fastapi_service/parser/pdf_parser.py: PDF extraction + parsing
+- backend/fastapi_service/parser/categorizer.py: keyword to category assignment
+- backend/shared/schemas.py: shared request/response models
+- ml/features.py and ml/predict.py: ML-ready placeholders
