@@ -2,18 +2,29 @@ import json
 import logging
 from collections import defaultdict
 from decimal import Decimal
-
+import os
+import django
+from django.db.utils import OperationalError, ProgrammingError
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-
-from backend.fastapi_service.parser.categorizer import build_keyword_map, categorize_description
+from backend.fastapi_service.parser.categorizer import (
+    build_keyword_map,
+    build_regex_rules,
+    categorize_with_regex,
+    infer_transaction_subtype,
+)
 from backend.fastapi_service.parser.pdf_parser import extract_transactions_from_pdf
-from backend.shared.schemas import ParsePdfResponse
-
+from backend.shared.schemas import DailySummaryOut, ParsePdfResponse, TransactionOut
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="BudgetIQ PDF Parsing Service", version="1.0.0")
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+django.setup()
+from backend.django_app.models import MonthlySummary, RegexCategoryMapping, Transaction
+from backend.django_app.services.db_service import save_transactions, upsert_daily_summaries
+
+app = FastAPI(title="BudgetIQ ", version="1.0.0")
 
 DEBIT_CATEGORIES = ["cash_withdrawal", "extra", "lunch", "other", "recharge", "tea"]
 
@@ -24,12 +35,13 @@ def health() -> dict[str, str]:
 
 
 @app.post("/parse-pdf")
-async def parse_pdf(
+def parse_pdf(
     file: UploadFile = File(...),
     password: str | None = Form(default=None),
     mappings: str = Form(default="[]"),
+    persist: bool = Form(default=True),
 ) -> JSONResponse:
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     try:
@@ -39,7 +51,7 @@ async def parse_pdf(
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid mappings payload") from exc
 
-    content = await file.read()
+    content = file.file.read()
 
     try:
         transactions = extract_transactions_from_pdf(content, password=password)
@@ -48,14 +60,83 @@ async def parse_pdf(
         raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {exc}") from exc
 
     keyword_map = build_keyword_map(mapping_rows)
+    regex_rules = build_regex_rules(mapping_rows)
     for tx in transactions:
-        tx["category"] = categorize_description(tx["description"], keyword_map)
+        category, canonical_name = categorize_with_regex(tx["description"], keyword_map, regex_rules)
+        tx["category"] = category
+        tx["subtype"] = infer_transaction_subtype(tx["description"], tx["type"])
+        if canonical_name:
+            tx["canonical_name"] = canonical_name
 
     summaries = _build_daily_summaries(transactions)
 
-    payload = ParsePdfResponse(transactions=transactions, summaries=summaries)
+    if persist and transactions:
+        save_transactions(transactions=transactions, source_file=file.filename)
+        upsert_daily_summaries(summaries=summaries)
+
+    transaction_models = [TransactionOut.model_validate(tx) for tx in transactions]
+    summary_models = [DailySummaryOut.model_validate(summary) for summary in summaries]
+
+    payload = ParsePdfResponse(transactions=transaction_models, summaries=summary_models)
     return JSONResponse(content=payload.model_dump(mode="json"))
 
+
+@app.get('/get_transactions')
+def get_transactions():
+    """Get all transactions from the database."""
+    transactions = list(
+        Transaction.objects.
+        all().
+        order_by('-date').
+        values('id', 'date', 'description', 'amount', 'type', 'subtype', 'category')
+        )
+    return {"transactions": transactions}
+
+@app.get('/get_all_daily_summaries')
+def get_all_daily_summaries():
+    daily_summaries = _build_daily_summaries(
+        list(Transaction.objects.all().order_by('-date').values('date', 'description', 'amount', 'type', 'category'))
+    )
+    return daily_summaries
+
+
+@app.get('/get_monthly_summaries')
+def get_monthly_summaries(year: int | None = None, month: int | None = None):
+    queryset = MonthlySummary.objects.all().order_by('year', 'month')
+    if year is not None:
+        queryset = queryset.filter(year=year)
+    if month is not None:
+        queryset = queryset.filter(month=month)
+
+    summaries = list(queryset.values('year', 'month', 'total_debit', 'total_credit', 'created_at'))
+    return {'monthly_summaries': summaries}
+
+
+@app.get('/get_regex_mappings')
+def get_regex_mappings():
+    try:
+        mappings = list(
+            RegexCategoryMapping.objects.all()
+            .order_by('priority', 'name')
+            .values('id', 'name', 'pattern', 'category', 'priority', 'created_at')
+        )
+    except (OperationalError, ProgrammingError):
+        logger.warning("regex_category_mapping table not available yet; returning empty mapping list")
+        mappings = []
+    return {'regex_mappings': mappings}
+
+
+
+
+
+
+
+
+
+
+
+
+#_----------------------------------HELEPR FUNCTIONS----------------------------------#
 
 def _build_daily_summaries(transactions: list[dict]) -> list[dict]:
     grouped = defaultdict(

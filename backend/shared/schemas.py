@@ -14,6 +14,15 @@ CategoryLiteral = Literal[
     "credit",
 ]
 
+SubtypeLiteral = Literal[
+    "expense",
+    "transfer_out",
+    "transfer_in",
+    "atm_withdrawal",
+    "salary",
+    "refund",
+]
+
 
 class CategoryMappingIn(BaseModel):
     keyword: str = Field(min_length=1, max_length=100)
@@ -27,6 +36,7 @@ class TransactionOut(BaseModel):
     description: str
     amount: Decimal
     type: Literal["debit", "credit"]
+    subtype: SubtypeLiteral = "expense"
     balance: Decimal = Decimal("0.00")
     category: CategoryLiteral = "other"
 
