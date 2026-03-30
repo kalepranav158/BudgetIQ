@@ -2,6 +2,13 @@
 
 BudgetIQ is a clean backend rebuild using Django + FastAPI for SBI PDF transaction ingestion, categorization, and daily expense aggregation.
 
+## Documentation Index
+- docs/setup.md
+- docs/architecture.md
+- docs/api.md
+- docs/progress_log.md
+- docs/sprint_tracker.md
+
 ## Stack
 - Django (API, ORM, data persistence)
 - FastAPI (PDF parsing microservice)
@@ -41,6 +48,7 @@ BudgetIQ/
 - description
 - amount
 - type (debit/credit)
+- subtype (expense/transfer_out/transfer_in/atm_withdrawal/salary/refund)
 - category
 - source_file
 - created_at
@@ -48,6 +56,7 @@ BudgetIQ/
 ### daily_expense_summary
 - id
 - date (unique)
+- month_id (FK -> monthly_summary)
 - cash_withdrawal
 - extra
 - lunch
@@ -58,10 +67,26 @@ BudgetIQ/
 - total_debit
 - total_credit
 
+### monthly_summary
+- id
+- year
+- month
+- total_debit
+- total_credit
+- created_at
+
 ### category_mapping
 - id
 - keyword
 - category
+- created_at
+
+### regex_category_mapping
+- id
+- name
+- pattern
+- category
+- priority
 - created_at
 
 ## Setup
@@ -93,11 +118,15 @@ BudgetIQ/
 - `GET /health`
 - `GET /category-mapping`
 - `POST /category-mapping/create`
+- `GET /regex-mapping`
+- `POST /regex-mapping/create`
 - `POST /upload-pdf`
 
 ### FastAPI
 - `GET /health`
 - `POST /parse-pdf`
+- `GET /get_transactions`
+- `GET /get_regex_mappings`
 
 See detailed examples in docs/api.md.
 
@@ -114,3 +143,4 @@ See detailed examples in docs/api.md.
 - No frontend included.
 - No ML models implemented.
 - System is ML-ready via clean transactional + daily summary schema.
+- Monthly rollups are automatically updated during daily summary upserts.

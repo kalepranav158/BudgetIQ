@@ -4,7 +4,7 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from backend.django_app.models import CategoryMapping
+from backend.django_app.models import CategoryMapping, RegexCategoryMapping
 from backend.django_app.services.db_service import get_category_mappings, save_transactions, upsert_daily_summaries
 from backend.django_app.services.fastapi_client import FastApiParseError, parse_pdf_with_fastapi
 
@@ -34,6 +34,7 @@ def create_category_mapping(request: HttpRequest) -> JsonResponse:
         keyword=keyword,
         defaults={"category": category},
     )
+
     if not created:
         mapping.category = category
         mapping.save(update_fields=["category"])
@@ -43,6 +44,66 @@ def create_category_mapping(request: HttpRequest) -> JsonResponse:
             "id": mapping.id,
             "keyword": mapping.keyword,
             "category": mapping.category,
+            "created": created,
+        },
+        status=201 if created else 200,
+    )
+
+
+@require_GET
+def list_regex_mappings(_: HttpRequest) -> JsonResponse:
+    rows = RegexCategoryMapping.objects.all().order_by("priority", "name")
+    return JsonResponse(
+        {
+            "mappings": [
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "pattern": row.pattern,
+                    "category": row.category,
+                    "priority": row.priority,
+                }
+                for row in rows
+            ]
+        },
+        status=200,
+    )
+
+
+@csrf_exempt
+@require_POST
+def create_regex_mapping(request: HttpRequest) -> JsonResponse:
+    name = str(request.POST.get("name", "")).strip()
+    pattern = str(request.POST.get("pattern", "")).strip()
+    category = str(request.POST.get("category", "")).strip().lower()
+    priority_raw = str(request.POST.get("priority", "100")).strip()
+
+    if not name or not pattern or not category:
+        return JsonResponse({"error": "name, pattern and category are required"}, status=400)
+
+    try:
+        priority = int(priority_raw)
+    except ValueError:
+        return JsonResponse({"error": "priority must be an integer"}, status=400)
+
+    mapping, created = RegexCategoryMapping.objects.get_or_create(
+        name=name,
+        defaults={"pattern": pattern, "category": category, "priority": priority},
+    )
+
+    if not created:
+        mapping.pattern = pattern
+        mapping.category = category
+        mapping.priority = priority
+        mapping.save(update_fields=["pattern", "category", "priority"])
+
+    return JsonResponse(
+        {
+            "id": mapping.id,
+            "name": mapping.name,
+            "pattern": mapping.pattern,
+            "category": mapping.category,
+            "priority": mapping.priority,
             "created": created,
         },
         status=201 if created else 200,

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import django
@@ -18,11 +19,46 @@ def test_fastapi_health_endpoint() -> None:
     assert response.json()["status"] == "ok"
 
 
+def test_fastapi_parse_all_pdfs_in_io() -> None:
+    client = TestClient(app)
+    io_dir = Path(__file__).resolve().parents[1] / "IO"
+    pdf_files = sorted(io_dir.glob("*.pdf"))
+
+    assert pdf_files, "No PDF files found in IO directory"
+
+    for pdf_file in pdf_files:
+        with pdf_file.open("rb") as handle:
+            response = client.post(
+                "/parse-pdf",
+                files={"file": (pdf_file.name, handle, "application/pdf")},
+                data={
+                    "password": "1508@6239",
+                    "mappings": "[]",
+                    "persist": "false",
+                },
+            )
+
+        assert response.status_code == 200, f"Failed parsing {pdf_file.name}: {response.text}"
+        payload = response.json()
+        assert "transactions" in payload
+        assert "summaries" in payload
+
+
 def test_django_health_endpoint() -> None:
     client = Client()
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_fastapi_get_regex_mappings_endpoint() -> None:
+    client = TestClient(app)
+    response = client.get("/get_regex_mappings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "regex_mappings" in payload
+    assert isinstance(payload["regex_mappings"], list)
 
 
 @patch("backend.django_app.views.parse_pdf_with_fastapi")

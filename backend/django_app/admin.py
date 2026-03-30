@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from backend.django_app.models import CategoryMapping, DailyExpenseSummary, Transaction
+from backend.django_app.models import CategoryMapping, DailyExpenseSummary, RegexCategoryMapping, Transaction
 
 
 @admin.register(Transaction)
@@ -32,3 +32,10 @@ class DailyExpenseSummaryAdmin(admin.ModelAdmin):
 class CategoryMappingAdmin(admin.ModelAdmin):
     list_display = ("id", "keyword", "category", "created_at")
     search_fields = ("keyword", "category")
+
+
+@admin.register(RegexCategoryMapping)
+class RegexCategoryMappingAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "pattern", "category", "priority", "created_at")
+    search_fields = ("name", "pattern", "category")
+    list_filter = ("category",)

@@ -24,6 +24,33 @@ Form fields:
 - keyword (required)
 - category (required)
 
+### GET /regex-mapping
+Returns all regex-category mappings.
+
+Response:
+```json
+{
+  "mappings": [
+    {
+      "id": 1,
+      "name": "Swiggy",
+      "pattern": "SWIGGY|BUNDL",
+      "category": "lunch",
+      "priority": 1
+    }
+  ]
+}
+```
+
+### POST /regex-mapping/create
+Create or update regex mapping rows.
+
+Form fields:
+- name (required)
+- pattern (required, regex string)
+- category (required)
+- priority (optional, default 100)
+
 ### POST /upload-pdf
 Uploads SBI PDF statement and stores transactions + summary.
 
@@ -41,6 +68,10 @@ Response:
 }
 ```
 
+Behavior notes:
+- Daily summaries are upserted into `daily_expense_summary`.
+- Monthly totals are auto-maintained in `monthly_summary`.
+
 ## FastAPI Parser Service
 
 ### GET /health
@@ -53,6 +84,7 @@ Form fields:
 - file (required)
 - password (optional)
 - mappings (required JSON string list)
+- persist (optional, default true)
 
 Response:
 ```json
@@ -63,6 +95,7 @@ Response:
       "description": "UPI/ZOMATO",
       "amount": "249.00",
       "type": "debit",
+      "subtype": "expense",
       "balance": "12000.00",
       "category": "lunch"
     }
@@ -83,3 +116,32 @@ Response:
   ]
 }
 ```
+
+### GET /get_transactions
+Returns persisted transactions from the Django database.
+
+Response:
+```json
+{
+  "transactions": [
+    {
+      "id": 1,
+      "date": "2024-07-01",
+      "description": "UPI/ZOMATO",
+      "amount": 249.0,
+      "type": "debit",
+      "subtype": "expense",
+      "category": "lunch"
+    }
+  ]
+}
+```
+
+### GET /get_regex_mappings
+Returns regex mappings available to FastAPI parser.
+
+### GET /get_all_daily_summaries
+Builds and returns daily summaries from persisted transaction rows.
+
+### GET /get_monthly_summaries
+Returns persisted monthly debit and credit totals.
