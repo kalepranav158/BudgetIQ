@@ -1,12 +1,14 @@
 import logging
+import hashlib
 from datetime import date
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
 
 from backend.django_app.models import (
+    AccountCategoryMapping,
     CategoryMapping,
     DailyExpenseSummary,
     MonthlySubtypeSummary,
@@ -18,6 +20,12 @@ from backend.django_app.models import (
 
 logger = logging.getLogger(__name__)
 VALID_SUBTYPES = {key for key, _ in SUBTYPE_CHOICES}
+
+
+def _build_transaction_hash(tx_date: date, amount: Decimal, description: str) -> str:
+    normalized_description = " ".join(str(description).strip().upper().split())
+    canonical = f"{tx_date.isoformat()}|{amount.quantize(Decimal('0.01'))}|{normalized_description}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _recalculate_monthly_totals(year: int, month: int) -> None:
@@ -131,10 +139,13 @@ def infer_transaction_subtype(description: str, tx_type: str) -> str:
     return "expense" if normalized_type == "debit" else "transfer_in"
 
 
-def get_category_mappings() -> list[dict[str, str]]:
+def get_category_mappings() -> list[dict[str, str | int]]:
     keyword_rows = CategoryMapping.objects.all().values("keyword", "category")
     regex_rows = RegexCategoryMapping.objects.all().order_by("priority", "name").values(
         "name", "pattern", "category", "priority"
+    )
+    account_rows = AccountCategoryMapping.objects.all().order_by("priority", "upi_id").values(
+        "upi_id", "name", "category", "priority"
     )
 
     mappings: list[dict[str, str | int]] = [
@@ -155,6 +166,16 @@ def get_category_mappings() -> list[dict[str, str]]:
         }
         for row in regex_rows
     )
+    mappings.extend(
+        {
+            "kind": "account",
+            "upi_id": row["upi_id"],
+            "name": row["name"],
+            "category": row["category"],
+            "priority": row["priority"],
+        }
+        for row in account_rows
+    )
     return mappings
 
 
@@ -162,29 +183,59 @@ def get_category_mappings() -> list[dict[str, str]]:
 def save_transactions(transactions: list[dict], source_file: str) -> list[Transaction]:
     created_records: list[Transaction] = []
     touched_months: set[tuple[int, int]] = set()
+    skipped_duplicates = 0
+    existing_hashes_by_bucket: dict[tuple[date, Decimal], set[str]] = {}
     for item in transactions:
         tx_date = item["date"]
         if isinstance(tx_date, str):
             tx_date = date.fromisoformat(tx_date)
+        amount = Decimal(str(item["amount"]))
+        transaction_hash = _build_transaction_hash(
+            tx_date=tx_date,
+            amount=amount,
+            description=item["description"],
+        )
+
+        bucket_key = (tx_date, amount.quantize(Decimal("0.01")))
+        if bucket_key not in existing_hashes_by_bucket:
+            existing_descriptions = Transaction.objects.filter(date=tx_date, amount=amount).values_list(
+                "description", flat=True
+            )
+            existing_hashes_by_bucket[bucket_key] = {
+                _build_transaction_hash(tx_date=tx_date, amount=amount, description=desc)
+                for desc in existing_descriptions
+            }
+
+        if transaction_hash in existing_hashes_by_bucket[bucket_key]:
+            skipped_duplicates += 1
+            continue
+
         subtype = str(item.get("subtype") or infer_transaction_subtype(item["description"], item["type"])).lower()
         if subtype not in VALID_SUBTYPES:
             subtype = "expense"
-        record = Transaction.objects.create(
-            date=tx_date,
-            description=item["description"],
-            amount=Decimal(str(item["amount"])),
-            type=item["type"],
-            subtype=subtype,
-            category=item.get("category", "other"),
-            source_file=source_file,
-        )
+        payload = {
+            "date": tx_date,
+            "description": item["description"],
+            "amount": amount,
+            "type": item["type"],
+            "subtype": subtype,
+            "category": item.get("category", "other"),
+            "source_file": source_file,
+        }
+        record = Transaction.objects.create(**payload)
         created_records.append(record)
+        existing_hashes_by_bucket[bucket_key].add(transaction_hash)
         touched_months.add((tx_date.year, tx_date.month))
 
     for year, month in touched_months:
         _recalculate_monthly_subtype_totals(year=year, month=month)
 
-    logger.info("Saved %s transactions from %s", len(created_records), source_file)
+    logger.info(
+        "Saved %s transactions from %s (skipped_duplicates=%s)",
+        len(created_records),
+        source_file,
+        skipped_duplicates,
+    )
     return created_records
 
 

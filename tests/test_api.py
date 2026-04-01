@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -59,6 +60,63 @@ def test_fastapi_get_regex_mappings_endpoint() -> None:
     payload = response.json()
     assert "regex_mappings" in payload
     assert isinstance(payload["regex_mappings"], list)
+
+
+def test_fastapi_get_category_mappings_endpoint() -> None:
+    client = TestClient(app)
+    response = client.get("/get_category_mappings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "category_mappings" in payload
+    assert isinstance(payload["category_mappings"], list)
+
+
+@patch("backend.fastapi_service.main.extract_transactions_from_pdf")
+def test_fastapi_account_mapping_override(mock_extract) -> None:
+    mock_extract.return_value = [
+        {
+            "date": "2026-03-30",
+            "description": "TRANSFER TO 4897694162092 UPI/DR/510791183658/MAYURESH/YESB/q731754728/UPI",
+            "amount": "120.00",
+            "type": "debit",
+            "balance": "1000.00",
+        }
+    ]
+
+    client = TestClient(app)
+    mappings = [
+        {
+            "kind": "account",
+            "upi_id": "YESB/Q731754728",
+            "name": "MAYURESH",
+            "category": "lunch",
+            "priority": 1,
+        }
+    ]
+
+    response = client.post(
+        "/parse-pdf",
+        files={"file": ("sample.pdf", b"fake-pdf-bytes", "application/pdf")},
+        data={
+            "password": "1508@6239",
+            "mappings": json.dumps(mappings),
+            "persist": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "transactions" in payload
+    assert isinstance(payload["transactions"], list)
+
+    account_rule_rows = [
+        tx for tx in payload["transactions"] if tx.get("category_source") == "account_rule"
+    ]
+    assert account_rule_rows
+    first = account_rule_rows[0]
+    assert first["category"] == "lunch"
+    assert first["confidence"] == 1.0
 
 
 @patch("backend.django_app.views.parse_pdf_with_fastapi")

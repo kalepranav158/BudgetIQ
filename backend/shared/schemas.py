@@ -39,6 +39,8 @@ class TransactionOut(BaseModel):
     subtype: SubtypeLiteral = "expense"
     balance: Decimal = Decimal("0.00")
     category: CategoryLiteral = "other"
+    category_source: Literal["account_rule", "regex", "keyword", "ml"] = "keyword"
+    confidence: float = 0.0
 
 
 class DailySummaryOut(BaseModel):

@@ -11,7 +11,7 @@ __pycache__/
 
 .env
 .env.*
-!.env.example
+.env.example
 
 smartbudget/db.sqlite3
 database/connection/*.db
@@ -27,3 +27,7 @@ dist/
 build/
 pytest-cache-files-*/
 notebook
+imp_cmd.md
+helper.py
+Problems_curr.md
+mapping.py

@@ -141,3 +141,21 @@ class RegexCategoryMapping(models.Model):
         super().save(*args, **kwargs)
 
 
+class AccountCategoryMapping(models.Model):
+    upi_id = models.CharField(max_length=32, db_index=True)
+    name = models.CharField(max_length=100, blank=True, default="")
+    category = models.CharField(max_length=32)
+    priority = models.IntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "account_category_mapping"
+        indexes = [models.Index(fields=["upi_id"]), models.Index(fields=["priority"])]
+
+    def save(self, *args, **kwargs):
+        self.upi_id = self.upi_id.strip()
+        self.name = self.name.strip().upper()
+        self.category = self.category.strip().lower()
+        super().save(*args, **kwargs)
+
+
