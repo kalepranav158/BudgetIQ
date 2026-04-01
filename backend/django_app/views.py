@@ -4,7 +4,7 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from backend.django_app.models import CategoryMapping, RegexCategoryMapping
+from backend.django_app.models import AccountCategoryMapping, CategoryMapping, RegexCategoryMapping
 from backend.django_app.services.db_service import get_category_mappings, save_transactions, upsert_daily_summaries
 from backend.django_app.services.fastapi_client import FastApiParseError, parse_pdf_with_fastapi
 
@@ -102,6 +102,66 @@ def create_regex_mapping(request: HttpRequest) -> JsonResponse:
             "id": mapping.id,
             "name": mapping.name,
             "pattern": mapping.pattern,
+            "category": mapping.category,
+            "priority": mapping.priority,
+            "created": created,
+        },
+        status=201 if created else 200,
+    )
+
+
+@require_GET
+def list_account_mappings(_: HttpRequest) -> JsonResponse:
+    rows = AccountCategoryMapping.objects.all().order_by("priority", "upi_id")
+    return JsonResponse(
+        {
+            "mappings": [
+                {
+                    "id": row.id,
+                    "upi_id": row.upi_id,
+                    "name": row.name,
+                    "category": row.category,
+                    "priority": row.priority,
+                }
+                for row in rows
+            ]
+        },
+        status=200,
+    )
+
+
+@csrf_exempt
+@require_POST
+def create_account_mapping(request: HttpRequest) -> JsonResponse:
+    upi_id = str(request.POST.get("upi_id", "")).strip()
+    name = str(request.POST.get("name", "")).strip().upper()
+    category = str(request.POST.get("category", "")).strip().lower()
+    priority_raw = str(request.POST.get("priority", "1")).strip()
+
+    if not upi_id or not category:
+        return JsonResponse({"error": "upi_id and category are required"}, status=400)
+
+    try:
+        priority = int(priority_raw)
+    except ValueError:
+        return JsonResponse({"error": "priority must be an integer"}, status=400)
+
+    mapping, created = AccountCategoryMapping.objects.get_or_create(
+        upi_id=upi_id,
+        name=name,
+        defaults={"category": category, "priority": priority},
+    )
+
+    if not created:
+        mapping.category = category
+        mapping.priority = priority
+        mapping.save(update_fields=["category", "priority"])
+
+    return JsonResponse(
+        {
+            "id": mapping.id,
+            "upi_id": mapping.upi_id,
+            "name": mapping.name,
             "category": mapping.category,
             "priority": mapping.priority,
             "created": created,
