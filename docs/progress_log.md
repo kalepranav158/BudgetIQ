@@ -1,5 +1,44 @@
 # Progress Log
 
+## 2026-04-29
+
+- Completed parser robustness updates for statement format variance:
+	- SBI start-line detection now supports numeric dates and optional post-date columns.
+	- Date parsing expanded to `%d/%m/%Y`, `%d-%m-%Y`, and `%d %b %Y`.
+	- Amount-column regex now tolerates missing `Ref` column variants.
+- Improved encrypted PDF handling in FastAPI parsing flow:
+	- Added explicit password/encryption exception handling and clearer client-facing parse errors.
+- Enabled dynamic category support end-to-end:
+	- Frontend mapping forms now support creating custom categories.
+	- Backend categorization/schema layer accepts non-hardcoded category labels.
+- Implemented transaction reclassification workflow:
+	- Added reparse job model and worker command (`run_reparse_worker`).
+	- Added enqueue/status APIs for background reclassification.
+	- Added synchronous reclassify path for dashboard-triggered immediate runs.
+	- Added dashboard reclassification status cards (status, rows updated, last run, progress).
+- Fixed dashboard refresh gap after reclassification:
+	- Corrected React Query invalidation keys to actual query keys (`dailySummaries`, `monthlySummaries`).
+	- Added active query refetch after reclassify completion.
+- Fixed dashboard reclassify timeout behavior:
+	- Increased synchronous reclassify request timeout to 180s on frontend mutation.
+
+### Current Phase State (as of 2026-04-29)
+
+- Phase A: Parser Reliability -> **Complete (for current known statement formats)**
+- Phase B: Dynamic Categorization -> **Complete (keyword + custom categories)**
+- Phase C: Reclassification UX -> **Complete for dashboard-triggered manual runs**
+- Phase D: Background Processing -> **Partial (worker command implemented; no Celery/RQ orchestration)**
+- Phase E: ML Production Integration -> **Partial (infrastructure present; classification still rule-dominant in current live flow)**
+
+## 2026-04-16
+
+- Improved classification precision in `categorizer.py` with safer short-keyword matching to reduce substring false positives.
+- Added keyword matching priority by keyword length so specific merchant patterns are evaluated before generic tokens.
+- Improved account-rule matching with tolerant name comparison when UPI ID matches exactly, returning calibrated confidence (`0.95` for fuzzy name + exact UPI, `0.9` for fuzzy name-only fallback).
+- Hardened rule parsing with safe priority casting to avoid crashes from malformed mapping rows.
+- Added regression tests for short-keyword false positives and fuzzy UPI account-name matching.
+- Validated targeted suite: `tests/test_categorizer.py` and `tests/test_categorization.py` (`9 passed`).
+
 ## 2026-03-30
 
 - Added transaction subtype support (`expense`, `transfer_out`, `transfer_in`, `atm_withdrawal`, `salary`, `refund`) to parsing and persistence flow.
