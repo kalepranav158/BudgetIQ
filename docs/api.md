@@ -131,11 +131,47 @@ Response:
       "amount": 249.0,
       "type": "debit",
       "subtype": "expense",
-      "category": "lunch"
+      "category": "lunch",
+      "category_source": "keyword",
+      "confidence": 1.0
     }
   ]
 }
 ```
+
+### GET /forecast_daily_spend
+Returns regression-based daily debit forecast for the requested horizon.
+
+Query params:
+- `days` (optional, default 7, allowed 1-60)
+
+Response:
+```json
+{
+  "days": 7,
+  "model_version": "v20260414T010101Z-abcd1234",
+  "selected_model": "ridge",
+  "last_observed_date": "2026-04-13",
+  "recent_actuals": [
+    {
+      "date": "2026-04-13",
+      "actual_total_debit": 430.0
+    }
+  ],
+  "forecast": [
+    {
+      "date": "2026-04-14",
+      "predicted_total_debit": 450.0,
+      "lower_bound": 420.0,
+      "upper_bound": 480.0
+    }
+  ]
+}
+```
+
+Error notes:
+- `400` for invalid horizon or insufficient historical data.
+- `503` when regression artifact is not available.
 
 ### GET /get_regex_mappings
 Returns regex mappings available to FastAPI parser.

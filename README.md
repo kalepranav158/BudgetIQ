@@ -3,11 +3,18 @@
 BudgetIQ is a clean backend rebuild using Django + FastAPI for SBI PDF transaction ingestion, categorization, and daily expense aggregation.
 
 ## Documentation Index
+- docs/README.md
 - docs/setup.md
 - docs/architecture.md
 - docs/api.md
 - docs/progress_log.md
 - docs/sprint_tracker.md
+- docs/overview_frontend.md
+- docs/overview_dashboard.md
+- docs/ml_pipeline.md
+- docs/machine_learning_application.md
+- docs/regression_prediction_plan.md
+- docs/frontend_regression_forecast_plan.md
 
 ## Stack
 - Django (API, ORM, data persistence)

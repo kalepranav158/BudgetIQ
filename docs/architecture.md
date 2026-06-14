@@ -19,7 +19,14 @@
 - backend/fastapi_service/parser/pdf_parser.py: PDF extraction + parsing
 - backend/fastapi_service/parser/categorizer.py: regex/keyword categorization + subtype derivation
 - backend/shared/schemas.py: shared request/response models
-- ml/features.py and ml/predict.py: ML-ready placeholders
+- ml/features.py: shared feature engineering for dataset export and inference
+- ml/inference/predict.py: runtime-safe joblib-based fallback predictor
+
+## ML Integration Notes
+
+- The parser flow already uses deterministic rules first and ML fallback second.
+- The ML predictor returns `None` safely when artifacts are missing or invalid.
+- Dataset export and training now use the real Django transaction model, not placeholder accessors.
 
 ## Dataflow: Daily to Monthly
 1. `upsert_daily_summaries()` parses each summary date.

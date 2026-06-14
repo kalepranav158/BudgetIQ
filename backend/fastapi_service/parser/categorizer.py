@@ -1,21 +1,56 @@
 from typing import Iterable
 import re
 
-DEFAULT_CATEGORIES = {
-    "cash_withdrawal",
-    "extra",
-    "lunch",
-    "other",
-    "recharge",
-    "tea",
-    "credit",
-}
+DEFAULT_CATEGORY = "other"
 
 
 # Precompiled regex to extract UPI reference IDs of the form
 #   YESB/Q208692237
 # It is case-insensitive and tolerant of an optional trailing slash.
 _UPI_ID_REGEX = re.compile(r"([A-Za-z][A-Za-z0-9]{1,9})/([A-Za-z0-9]{4,})/?", re.IGNORECASE)
+
+
+def _safe_int(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_name_for_match(value: str) -> str:
+    # Keep letters and spaces only so matching is tolerant of punctuation noise.
+    cleaned = re.sub(r"[^A-Za-z\s]", " ", value or "")
+    return re.sub(r"\s+", " ", cleaned).strip().upper()
+
+
+def _name_matches(mapped_name: str, extracted_name: str) -> bool:
+    mapped = _normalize_name_for_match(mapped_name)
+    extracted = _normalize_name_for_match(extracted_name)
+    if not mapped or not extracted:
+        return False
+    if mapped == extracted:
+        return True
+
+    mapped_tokens = {token for token in mapped.split(" ") if token}
+    extracted_tokens = {token for token in extracted.split(" ") if token}
+    if not mapped_tokens or not extracted_tokens:
+        return False
+
+    # Consider it a match when one set of tokens fully contains the other.
+    return mapped_tokens.issubset(extracted_tokens) or extracted_tokens.issubset(mapped_tokens)
+
+
+def _keyword_matches(text: str, keyword: str) -> bool:
+    if not keyword:
+        return False
+
+    # For very short alphanumeric keywords, require token boundaries to avoid
+    # false positives like "TEA" matching inside unrelated words.
+    if keyword.isalnum() and len(keyword) <= 3:
+        boundary_pattern = re.compile(rf"(?<![A-Z0-9]){re.escape(keyword)}(?![A-Z0-9])")
+        return bool(boundary_pattern.search(text))
+
+    return keyword in text
 
 
 def build_keyword_map(mappings: Iterable[dict]) -> dict[str, str]:
@@ -27,7 +62,7 @@ def build_keyword_map(mappings: Iterable[dict]) -> dict[str, str]:
         category = str(item.get("category", "other")).strip().lower()
         if not keyword:
             continue
-        keyword_map[keyword] = category if category in DEFAULT_CATEGORIES else "other"
+        keyword_map[keyword] = category or DEFAULT_CATEGORY
     return keyword_map
 
 
@@ -43,15 +78,14 @@ def build_regex_rules(mappings: Iterable[dict]) -> list[tuple[re.Pattern[str], s
 
         name = str(item.get("name", "Unknown")).strip() or "Unknown"
         category = str(item.get("category", "other")).strip().lower()
-        priority = int(item.get("priority", 100))
+        priority = _safe_int(item.get("priority", 100), 100)
 
         try:
             compiled = re.compile(pattern, re.IGNORECASE)
         except re.error:
             continue
 
-        safe_category = category if category in DEFAULT_CATEGORIES else "other"
-        rules.append((compiled, name, safe_category, priority))
+        rules.append((compiled, name, category or DEFAULT_CATEGORY, priority))
 
     rules.sort(key=lambda row: row[3])
     return rules
@@ -78,14 +112,13 @@ def build_account_rules(mappings: Iterable[dict]) -> list[dict[str, str | int]]:
             continue
 
         category = str(item.get("category", "other")).strip().lower()
-        priority = int(item.get("priority", 1))
+        priority = _safe_int(item.get("priority", 1), 1)
 
-        safe_category = category if category in DEFAULT_CATEGORIES else "other"
         rules.append(
             {
                 "upi_id": upi_id,
                 "name": name,
-                "category": safe_category,
+                "category": category or DEFAULT_CATEGORY,
                 "priority": priority,
             }
         )
@@ -201,8 +234,8 @@ def extract_upi_counterparty_name(description: str) -> str | None:
 
 def categorize_description(description: str, keyword_map: dict[str, str]) -> str:
     text = description.upper()
-    for keyword, category in keyword_map.items():
-        if keyword in text:
+    for keyword, category in sorted(keyword_map.items(), key=lambda row: len(row[0]), reverse=True):
+        if _keyword_matches(text, keyword):
             return category
     return "other"
 
@@ -239,18 +272,30 @@ def categorize_transaction(
         mapped_name = str(rule.get("name", "")).strip().upper()
 
         both_present = bool(rule_upi and mapped_name and extracted_upi_upper and extracted_name_upper)
-        full_match = both_present and rule_upi == extracted_upi_upper and mapped_name == extracted_name_upper
+        upi_matches = bool(rule_upi and extracted_upi_upper and rule_upi == extracted_upi_upper)
+        name_exact_match = bool(mapped_name and extracted_name_upper and mapped_name == extracted_name_upper)
+        name_fuzzy_match = bool(mapped_name and extracted_name_upper and _name_matches(mapped_name, extracted_name_upper))
+        full_match = both_present and upi_matches and name_exact_match
 
         # Highest confidence when both UPI ID and name match exactly.
         if full_match:
             canonical_name = extracted_name.title() if extracted_name else mapped_name.title()
             return str(rule["category"]), "account_rule", 1.0, canonical_name
 
+        # Strong fallback when UPI ID matches exactly and names are close.
+        if upi_matches and name_fuzzy_match:
+            canonical_name = extracted_name.title() if extracted_name else mapped_name.title()
+            return str(rule["category"]), "account_rule", 0.95, canonical_name
+
         # Fallback: allow name-only mappings (no UPI ID stored) for backward
         # compatibility and simpler rules, as long as the receiver name matches.
         if not rule_upi and mapped_name and extracted_name_upper and mapped_name == extracted_name_upper:
             canonical_name = extracted_name.title() if extracted_name else mapped_name.title()
             return str(rule["category"]), "account_rule", 1.0, canonical_name
+
+        if not rule_upi and mapped_name and extracted_name_upper and name_fuzzy_match:
+            canonical_name = extracted_name.title() if extracted_name else mapped_name.title()
+            return str(rule["category"]), "account_rule", 0.9, canonical_name
 
     for compiled, canonical_name, category, _ in regex_rules:
         if compiled.search(description):

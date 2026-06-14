@@ -34,6 +34,8 @@ class Transaction(models.Model):
     type = models.CharField(max_length=6, choices=TYPE_CHOICES)
     subtype = models.CharField(max_length=20, choices=SUBTYPE_CHOICES, default="expense")
     category = models.CharField(max_length=32, default="other")
+    category_source = models.CharField(max_length=20, default="keyword")
+    confidence = models.FloatField(default=0.0)
     source_file = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -42,6 +44,7 @@ class Transaction(models.Model):
         indexes = [
             models.Index(fields=["date"]),
             models.Index(fields=["category"]),
+            models.Index(fields=["category_source"]),
             models.Index(fields=["type"]),
             models.Index(fields=["subtype"]),
         ]
@@ -157,5 +160,87 @@ class AccountCategoryMapping(models.Model):
         self.name = self.name.strip().upper()
         self.category = self.category.strip().lower()
         super().save(*args, **kwargs)
+
+
+class ReparseJob(models.Model):
+    STATUS_CHOICES = [
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("failed", "Failed"),
+        ("done", "Done"),
+    ]
+
+    kind = models.CharField(max_length=20)
+    params = models.JSONField(default=dict)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="queued")
+    progress = models.IntegerField(default=0)  # 0-100
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "reparse_job"
+        indexes = [models.Index(fields=["status"])]
+
+
+class LowConfidenceFlagRecord(models.Model):
+    """Track transactions with low-confidence ML predictions for active learning."""
+
+    STATUS_CHOICES = [
+        ("flagged", "Flagged"),
+        ("reviewed", "Reviewed"),
+        ("corrected", "Corrected"),
+    ]
+
+    transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.CASCADE,
+        related_name="low_confidence_flag",
+    )
+    original_category = models.CharField(max_length=32)
+    original_confidence = models.FloatField()
+    confidence_threshold = models.FloatField(default=0.6)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="flagged")
+    corrected_category = models.CharField(max_length=32, blank=True, default="")
+    human_review_notes = models.TextField(blank=True, default="")
+    flagged_at = models.DateTimeField(auto_now_add=True)
+    corrected_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "low_confidence_flag_record"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["flagged_at"]),
+            models.Index(fields=["original_confidence"]),
+        ]
+
+
+class RetrainingCycle(models.Model):
+    """Track retraining cycles triggered by active learning."""
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("running", "Running"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+    ]
+
+    cycle_id = models.CharField(max_length=64, unique=True, db_index=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    trigger_reason = models.CharField(max_length=255)  # e.g., "80 corrections accumulated"
+    corrections_count = models.IntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    new_model_metrics = models.JSONField(null=True, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "retraining_cycle"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["created_at"]),
+        ]
 
 

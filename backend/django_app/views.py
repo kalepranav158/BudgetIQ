@@ -3,10 +3,17 @@ import logging
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from django.utils import timezone
 
 from backend.django_app.models import AccountCategoryMapping, CategoryMapping, RegexCategoryMapping
 from backend.django_app.services.db_service import get_category_mappings, save_transactions, upsert_daily_summaries
 from backend.django_app.services.fastapi_client import FastApiParseError, parse_pdf_with_fastapi
+from backend.django_app.models import Transaction
+from backend.fastapi_service.parser.categorizer import categorize_transaction, extract_upi_details
+import re
+from backend.django_app.models import ReparseJob
+from django.shortcuts import get_object_or_404
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -214,3 +221,173 @@ def upload_pdf(request: HttpRequest) -> JsonResponse:
         },
         status=201,
     )
+
+
+@csrf_exempt
+@require_POST
+def reparse_mapping(request: HttpRequest) -> JsonResponse:
+    """Re-apply a mapping to existing transactions.
+
+    POST params expected:
+      - kind: 'keyword'|'regex'|'account'
+      - category: target category
+      - keyword (when kind=keyword)
+      - pattern (when kind=regex)
+      - upi_id (when kind=account)
+
+    This endpoint updates matching Transaction rows in batches and
+    returns the number of rows updated.
+    """
+    kind = str(request.POST.get("kind", "")).strip().lower()
+    category = str(request.POST.get("category", "other")).strip().lower() or "other"
+
+    if kind == "all":
+        keyword_map = {
+            str(row.keyword).strip().upper(): str(row.category).strip().lower()
+            for row in CategoryMapping.objects.all()
+            if str(row.keyword).strip()
+        }
+        regex_rules = [
+            (re.compile(str(row.pattern), re.IGNORECASE), str(row.name).strip(), str(row.category).strip().lower(), int(row.priority or 100))
+            for row in RegexCategoryMapping.objects.all()
+            if str(row.pattern).strip()
+        ]
+        regex_rules.sort(key=lambda item: item[3])
+        account_rules = [
+            {
+                "upi_id": str(row.upi_id).strip().upper(),
+                "name": str(row.name).strip().upper(),
+                "category": str(row.category).strip().lower(),
+                "priority": int(row.priority or 1),
+            }
+            for row in AccountCategoryMapping.objects.all()
+        ]
+        account_rules.sort(key=lambda item: int(item["priority"]))
+
+        updated = 0
+        for tx in Transaction.objects.all().only("id", "description").iterator(chunk_size=500):
+            tx_category, tx_source, confidence, _ = categorize_transaction(
+                tx.description or "",
+                keyword_map,
+                regex_rules,
+                account_rules,
+            )
+            Transaction.objects.filter(id=tx.id).update(
+                category=tx_category,
+                category_source=tx_source,
+                confidence=confidence,
+            )
+            updated += 1
+
+        return JsonResponse(
+            {
+                "updated": updated,
+                "status": "done",
+                "updated_at": timezone.now().isoformat(),
+            },
+            status=200,
+        )
+
+    if kind == "keyword":
+        keyword = str(request.POST.get("keyword", "")).strip()
+        if not keyword:
+            return JsonResponse({"error": "keyword is required for kind=keyword"}, status=400)
+        qs = Transaction.objects.filter(description__icontains=keyword)
+        updated = qs.update(category=category, category_source="keyword", confidence=1.0)
+        return JsonResponse({"updated": updated}, status=200)
+
+    if kind == "regex":
+        pattern = str(request.POST.get("pattern", "")).strip()
+        if not pattern:
+            return JsonResponse({"error": "pattern is required for kind=regex"}, status=400)
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE)
+        except re.error:
+            return JsonResponse({"error": "invalid regex pattern"}, status=400)
+
+        # Iterate transaction descriptions in manageable batches, collect IDs to update
+        batch_size = 1000
+        ids_to_update = []
+        qs = Transaction.objects.all().values_list("id", "description")
+        for tid, desc in qs.iterator():
+            if compiled.search(str(desc or "")):
+                ids_to_update.append(tid)
+            if len(ids_to_update) >= batch_size:
+                Transaction.objects.filter(id__in=ids_to_update).update(category=category, category_source="regex", confidence=1.0)
+                ids_to_update = []
+
+        if ids_to_update:
+            Transaction.objects.filter(id__in=ids_to_update).update(category=category, category_source="regex", confidence=1.0)
+
+        # count updated rows — simple heuristic: number of matched ids
+        return JsonResponse({"updated": "ok"}, status=200)
+
+    if kind == "account":
+        upi_id = str(request.POST.get("upi_id", "")).strip()
+        if not upi_id:
+            return JsonResponse({"error": "upi_id is required for kind=account"}, status=400)
+
+        # Scan transactions and match extracted UPI IDs
+        batch_size = 1000
+        ids_to_update = []
+        qs = Transaction.objects.all().values_list("id", "description")
+        for tid, desc in qs.iterator():
+            details = extract_upi_details(str(desc or ""))
+            if details.get("upi_id") and details.get("upi_id").upper() == upi_id.upper():
+                ids_to_update.append(tid)
+            if len(ids_to_update) >= batch_size:
+                Transaction.objects.filter(id__in=ids_to_update).update(category=category, category_source="account_rule", confidence=1.0)
+                ids_to_update = []
+        if ids_to_update:
+            Transaction.objects.filter(id__in=ids_to_update).update(category=category, category_source="account_rule", confidence=1.0)
+
+        return JsonResponse({"updated": "ok"}, status=200)
+
+    return JsonResponse({"error": "unsupported kind"}, status=400)
+
+
+@csrf_exempt
+@require_POST
+def enqueue_reparse(request: HttpRequest) -> JsonResponse:
+    """Create a ReparseJob and return job id. Expects same POST params as reparse_mapping."""
+    kind = str(request.POST.get("kind", "")).strip().lower()
+    category = str(request.POST.get("category", "other")).strip().lower() or "other"
+    params = {"category": category}
+    if kind == "all":
+        job = ReparseJob.objects.create(kind=kind, params=params, status="queued", progress=0)
+        return JsonResponse({"job_id": job.id}, status=201)
+
+    if kind == "keyword":
+        keyword = str(request.POST.get("keyword", "")).strip()
+        if not keyword:
+            return JsonResponse({"error": "keyword required"}, status=400)
+        params["keyword"] = keyword
+    elif kind == "regex":
+        pattern = str(request.POST.get("pattern", "")).strip()
+        if not pattern:
+            return JsonResponse({"error": "pattern required"}, status=400)
+        params["pattern"] = pattern
+    elif kind == "account":
+        upi_id = str(request.POST.get("upi_id", "")).strip()
+        if not upi_id:
+            return JsonResponse({"error": "upi_id required"}, status=400)
+        params["upi_id"] = upi_id
+    else:
+        return JsonResponse({"error": "unsupported kind"}, status=400)
+
+    job = ReparseJob.objects.create(kind=kind, params=params, status="queued", progress=0)
+    return JsonResponse({"job_id": job.id}, status=201)
+
+
+@require_GET
+def reparse_status(request: HttpRequest, job_id: int) -> JsonResponse:
+    job = get_object_or_404(ReparseJob, id=job_id)
+    return JsonResponse({
+        "id": job.id,
+        "status": job.status,
+        "progress": job.progress,
+        "result": job.result,
+        "error": job.error,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+    })

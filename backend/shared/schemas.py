@@ -4,16 +4,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-CategoryLiteral = Literal[
-    "cash_withdrawal",
-    "extra",
-    "lunch",
-    "other",
-    "recharge",
-    "tea",
-    "credit",
-]
-
 SubtypeLiteral = Literal[
     "expense",
     "transfer_out",
@@ -26,7 +16,7 @@ SubtypeLiteral = Literal[
 
 class CategoryMappingIn(BaseModel):
     keyword: str = Field(min_length=1, max_length=100)
-    category: CategoryLiteral
+    category: str = Field(min_length=1, max_length=32)
 
 
 class TransactionOut(BaseModel):
@@ -38,7 +28,7 @@ class TransactionOut(BaseModel):
     type: Literal["debit", "credit"]
     subtype: SubtypeLiteral = "expense"
     balance: Decimal = Decimal("0.00")
-    category: CategoryLiteral = "other"
+    category: str = "other"
     category_source: Literal["account_rule", "regex", "keyword", "ml"] = "keyword"
     confidence: float = 0.0
 

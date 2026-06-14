@@ -1,0 +1,23 @@
+{
+  "dataset_path": "ml\\data\\regression_daily_dataset.csv",
+  "feature_columns": [
+    "lag_1",
+    "lag_3_mean",
+    "lag_7_mean",
+    "lag_14_mean",
+    "weekday",
+    "month",
+    "is_weekend"
+  ],
+  "generated_at": "2026-04-14T03:21:02.247991+00:00",
+  "latest_model_path": "ml\\models\\daily_spend_regressor.joblib",
+  "metrics_path": "ml\\models\\daily_spend_regressor.v20260414T032102Z-a2e95537.metrics.json",
+  "model_path": "ml\\models\\daily_spend_regressor.v20260414T032102Z-a2e95537.joblib",
+  "model_type": "regression",
+  "rows_total": 27301,
+  "rows_train": 21840,
+  "rows_validation": 5461,
+  "selected_model": "linear_regression",
+  "target_column": "target_total_debit",
+  "version": "v20260414T032102Z-a2e95537"
+}

@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 import django
 from django.test import Client
@@ -72,6 +73,67 @@ def test_fastapi_get_category_mappings_endpoint() -> None:
     assert isinstance(payload["category_mappings"], list)
 
 
+@patch("backend.fastapi_service.main.generate_daily_spend_forecast")
+def test_fastapi_forecast_daily_spend_endpoint(mock_forecast) -> None:
+    mock_forecast.return_value = {
+        "days": 7,
+        "model_version": "v20260414T010101Z-abcd1234",
+        "selected_model": "ridge",
+        "last_observed_date": "2026-04-13",
+        "recent_actuals": [
+            {
+                "date": "2026-04-13",
+                "actual_total_debit": 430.0,
+            }
+        ],
+        "forecast": [
+            {
+                "date": "2026-04-14",
+                "predicted_total_debit": 450.0,
+                "lower_bound": 420.0,
+                "upper_bound": 480.0,
+            }
+        ],
+    }
+
+    client = TestClient(app)
+    response = client.get("/forecast_daily_spend", params={"days": 7})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["days"] == 7
+    assert payload["model_version"].startswith("v")
+    assert payload["selected_model"] == "ridge"
+    assert isinstance(payload["recent_actuals"], list)
+    assert payload["recent_actuals"][0]["date"] == "2026-04-13"
+    assert isinstance(payload["forecast"], list)
+    assert payload["forecast"][0]["date"] == "2026-04-14"
+
+
+@patch("backend.fastapi_service.main.generate_daily_spend_forecast")
+def test_fastapi_forecast_daily_spend_invalid_days_returns_400(mock_forecast) -> None:
+    mock_forecast.side_effect = ValueError("days must be between 1 and 60")
+
+    client = TestClient(app)
+    response = client.get("/forecast_daily_spend", params={"days": 0})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert "days must be between 1 and 60" in payload["detail"]
+
+
+@patch("backend.fastapi_service.main.generate_daily_spend_forecast")
+def test_fastapi_forecast_daily_spend_missing_model_returns_503(mock_forecast) -> None:
+    mock_forecast.side_effect = RuntimeError("Daily spend regressor artifact is not available")
+
+    client = TestClient(app)
+    response = client.get("/forecast_daily_spend", params={"days": 7})
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert "artifact" in payload["detail"].lower()
+
+
 @patch("backend.fastapi_service.main.extract_transactions_from_pdf")
 def test_fastapi_account_mapping_override(mock_extract) -> None:
     mock_extract.return_value = [
@@ -121,11 +183,12 @@ def test_fastapi_account_mapping_override(mock_extract) -> None:
 
 @patch("backend.django_app.views.parse_pdf_with_fastapi")
 def test_upload_pdf_uses_parser_payload(mock_parse) -> None:
+    unique_description = f"UPI/ZOMATO_{uuid4().hex[:12].upper()}"
     mock_parse.return_value = {
         "transactions": [
             {
                 "date": "2024-07-01",
-                "description": "UPI/ZOMATO",
+                "description": unique_description,
                 "amount": "249.00",
                 "type": "debit",
                 "balance": "1000.00",
@@ -157,3 +220,4 @@ def test_upload_pdf_uses_parser_payload(mock_parse) -> None:
     assert body["saved_transactions"] == 1
     assert len(body["transactions"]) == 1
     assert len(body["summaries"]) == 1
+    assert body["transactions"][0]["description"] == unique_description

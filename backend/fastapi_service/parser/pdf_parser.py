@@ -5,20 +5,31 @@ from decimal import Decimal
 
 import pdfplumber
 
-START_LINE_PATTERN = re.compile(r"^(?P<date>\d{2}\s+[A-Za-z]{3}\s+\d{4})\s+(?P<body>.+)$")
+# Some statements start with Value Date + Post Date and may use either
+# textual dates ("01 Apr 2026") or numeric dates ("01/04/2026").
+_DATE_TOKEN = r"(?:\d{2}\s+[A-Za-z]{3}\s+\d{4}|\d{2}[/-]\d{2}[/-]\d{4})"
+START_LINE_PATTERN = re.compile(rf"^(?P<date>{_DATE_TOKEN})(?:\s+{_DATE_TOKEN})?\s+(?P<body>.+)$")
 
 SBI_AMOUNT_COLUMNS_PATTERN = re.compile(
-    r"^(?P<description>.+?)\s+"
-    r"(?P<ref>\S+)\s+"
-    r"(?P<debit>-|[\d,]+\.\d{2})\s+"
-    r"(?P<credit>-|[\d,]+\.\d{2})\s+"
+    # Matches lines where the last three columns are: debit, credit, balance
+    # Optionally captures a reference/cheque number between description and the numeric columns.
+    r"^(?P<description>.+?)\s+"  # non-greedy description
+    r"(?:(?P<ref>\S+)\s+)?"  # optional reference/cheque no
+    r"(?P<debit>-|[\d,]+\.\d{2})\s+"  # debit column or '-'
+    r"(?P<credit>-|[\d,]+\.\d{2})\s+"  # credit column or '-'
     r"(?P<balance>[\d,]+\.\d{2})$",
     re.IGNORECASE,
 )
 
 
 def _parse_sbi_date(raw: str) -> str:
-    return datetime.strptime(raw.strip(), "%d %b %Y").date().isoformat()
+    value = raw.strip()
+    for fmt in ("%d %b %Y", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(f"Unsupported date format: {raw}")
 
 
 def _parse_decimal(raw: str) -> Decimal:

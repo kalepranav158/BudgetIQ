@@ -220,6 +220,8 @@ def save_transactions(transactions: list[dict], source_file: str) -> list[Transa
             "type": item["type"],
             "subtype": subtype,
             "category": item.get("category", "other"),
+            "category_source": item.get("category_source", "keyword"),
+            "confidence": float(item.get("confidence", 0.0) or 0.0),
             "source_file": source_file,
         }
         record = Transaction.objects.create(**payload)

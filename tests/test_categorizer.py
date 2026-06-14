@@ -113,3 +113,32 @@ def test_account_mapping_name_only_match_without_account_number() -> None:
     assert source == "account_rule"
     assert confidence == 1.0
     assert canonical_name == "Hemant"
+
+
+def test_account_mapping_matches_when_upi_exact_and_name_is_close() -> None:
+    description = "TRANSFER TO 4897694162092 UPI/DR/510791183658/HEMANT P/YESB/Q208692237/UPI"
+    mappings = [
+        {
+            "kind": "account",
+            "upi_id": "YESB/Q208692237",
+            "name": "HEMANT",
+            "category": "tea",
+            "priority": 1,
+        }
+    ]
+
+    account_rules = build_account_rules(mappings)
+    regex_rules = build_regex_rules(mappings)
+    keyword_map = build_keyword_map(mappings)
+
+    category, source, confidence, canonical_name = categorize_transaction(
+        description=description,
+        keyword_map=keyword_map,
+        regex_rules=regex_rules,
+        account_rules=account_rules,
+    )
+
+    assert category == "tea"
+    assert source == "account_rule"
+    assert confidence == 0.95
+    assert canonical_name == "Hemant P"

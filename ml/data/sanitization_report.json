@@ -1,0 +1,16 @@
+{
+  "run_date": "2026-04-16",
+  "input_transactions": 226,
+  "quarantined_synthetic": 70,
+  "real_transactions": 156,
+  "duplicates_removed": 0,
+  "amount_outliers_flagged_debit": 18,
+  "amount_outliers_flagged_credit": 2,
+  "regression_rows_before": 27301,
+  "regression_rows_after_decontamination": 277,
+  "real_date_range": [
+    "2024-07-01",
+    "2025-04-17"
+  ],
+  "synthetic_year_threshold": 2027
+}

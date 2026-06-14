@@ -16,7 +16,10 @@ from backend.fastapi_service.parser.categorizer import (
     infer_transaction_subtype,
 )
 from backend.fastapi_service.parser.pdf_parser import extract_transactions_from_pdf
+from pdfminer.pdfdocument import PDFPasswordIncorrect
+from pdfplumber.utils.exceptions import PdfminerException
 from backend.shared.schemas import DailySummaryOut, ParsePdfResponse, TransactionOut
+from ml.inference.forecast import generate_daily_spend_forecast
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -95,7 +98,7 @@ def health() -> dict[str, str]:
 @app.post("/parse-pdf")
 def parse_pdf(
     file: UploadFile = File(...),
-    
+    password: str = Form(default="PRANA15082005"),
     mappings: str = Form(default="[]"),
     persist: bool = Form(default=True),
 ) -> JSONResponse:
@@ -117,10 +120,13 @@ def parse_pdf(
     content = file.file.read()
 
     try:
-        transactions = extract_transactions_from_pdf(content, password='1508@6239')
+        transactions = extract_transactions_from_pdf(content, password=password)
+    except (PDFPasswordIncorrect, PdfminerException) as exc:
+        logger.exception("PDF parsing failed due to password/encryption issue")
+        raise HTTPException(status_code=400, detail="PDF is encrypted or the provided password is incorrect") from exc
     except Exception as exc:
         logger.exception("PDF parsing failed")
-        raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Failed to parse PDF: {exc}") from exc
 
     keyword_map = build_keyword_map(mapping_rows)
     regex_rules = build_regex_rules(mapping_rows)
@@ -159,7 +165,17 @@ def get_transactions():
         Transaction.objects.
         all().
         order_by('-date', '-id').
-        values('id', 'date', 'description', 'amount', 'type', 'subtype', 'category')
+        values(
+            'id',
+            'date',
+            'description',
+            'amount',
+            'type',
+            'subtype',
+            'category',
+            'source_file',
+            'created_at',
+        )
         )
     return {"transactions": transactions}
 
@@ -181,6 +197,20 @@ def get_monthly_summaries(year: int | None = None, month: int | None = None):
 
     summaries = list(queryset.values('year', 'month', 'total_debit', 'total_credit', 'created_at'))
     return {'monthly_summaries': summaries}
+
+
+@app.get('/forecast_daily_spend')
+def forecast_daily_spend(days: int = 7):
+    try:
+        payload = generate_daily_spend_forecast(days=days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Daily spend forecast failed")
+        raise HTTPException(status_code=500, detail=f"Forecast failed: {exc}") from exc
+    return payload
 
 
 @app.get('/get_category_mappings')

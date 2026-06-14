@@ -9,6 +9,9 @@ from backend.django_app.views import (
     list_category_mappings,
     list_regex_mappings,
     upload_pdf,
+    reparse_mapping,
+    enqueue_reparse,
+    reparse_status,
 )
 
 urlpatterns = [
@@ -20,4 +23,7 @@ urlpatterns = [
     path("regex-mapping", list_regex_mappings, name="list-regex-mapping"),
     path("regex-mapping/create", create_regex_mapping, name="create-regex-mapping"),
     path("upload-pdf", upload_pdf, name="upload-pdf"),
+    path("reparse-mapping", reparse_mapping, name="reparse-mapping"),
+    path("reparse-mapping/enqueue", enqueue_reparse, name="enqueue-reparse"),
+    path("reparse-mapping/status/<int:job_id>", reparse_status, name="reparse-status"),
 ]

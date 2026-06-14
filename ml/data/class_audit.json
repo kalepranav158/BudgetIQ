@@ -1,0 +1,20 @@
+{
+  "other": {
+    "count": 118,
+    "pct": 75.64,
+    "trainable": true,
+    "note": "OK"
+  },
+  "lunch": {
+    "count": 26,
+    "pct": 16.67,
+    "trainable": true,
+    "note": "OK"
+  },
+  "recharge": {
+    "count": 12,
+    "pct": 7.69,
+    "trainable": true,
+    "note": "sparse"
+  }
+}

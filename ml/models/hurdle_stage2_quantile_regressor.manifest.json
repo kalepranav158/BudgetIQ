@@ -1,0 +1,27 @@
+{
+  "dataset_path": "ml\\data\\regression_daily_dataset.csv",
+  "generated_at": "2026-06-14T17:49:27.303915+00:00",
+  "latest_model_path": "ml\\models\\hurdle_stage2_quantile_regressor.joblib",
+  "metrics_path": "ml\\models\\hurdle_stage2_quantile_regressor.metrics.json",
+  "model_path": "ml\\models\\hurdle_stage2_quantile_regressor.v20260614T174927Z-480e5001.joblib",
+  "model_type": "quantile_regressor",
+  "rows_total": 277,
+  "rows_train": 221,
+  "rows_validation": 56,
+  "spend_days_train": 14,
+  "spend_days_validation": 3,
+  "stage": 2,
+  "stage1_metrics": {
+    "validation_accuracy": 1.0,
+    "validation_f1": 1.0
+  },
+  "stage2_metrics": {
+    "mae": 564.4592245710011,
+    "mape": 0.5053865207073053,
+    "rmse": 866.6476274936857,
+    "validation_samples": 3
+  },
+  "version": "v20260614T174927Z-480e5001",
+  "zero_days_train": 207,
+  "zero_days_validation": 53
+}

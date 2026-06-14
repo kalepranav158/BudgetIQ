@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-06-14T17:49:38.409664+00:00",
+  "specification_claims": {
+    "problem_statement": {
+      "claim": "Automated ingestion pipeline for 12,000+ transactions from 250+ bank statements",
+      "metrics": {
+        "transaction_count": {
+          "total_transactions": 1510,
+          "debits": 1306,
+          "credits": 204,
+          "categories": {
+            "other": 1138,
+            "lunch": 83,
+            "recharge": 75,
+            "tea": 210,
+            "breakfast": 4
+          }
+        },
+        "source_files": {
+          "unique_source_files": 1,
+          "source_files": [
+            "Demo_curr.pdf"
+          ]
+        }
+      }
+    },
+    "parsing_accuracy": {
+      "claim": "98%+ parsing accuracy",
+      "metrics": {
+        "metric": "parsing_accuracy",
+        "note": "Tracked via test_parser.py coverage",
+        "target_accuracy_percent": 98,
+        "description": "Ratio of correctly extracted transactions / total statement rows"
+      }
+    },
+    "deduplication": {
+      "claim": "99% deduplication precision",
+      "metrics": {
+        "metric": "deduplication_precision",
+        "note": "Tracked during ingestion via db_service.save_transactions()",
+        "description": "Ratio of successful deduplication (duplicates skipped / total attempted)",
+        "target_precision": 0.99
+      }
+    },
+    "classification": {
+      "claim": "93.4% accuracy, Macro-F1 0.91 (class-weighted TF-IDF + Logistic Regression)",
+      "metrics": {
+        "status": "not_available",
+        "note": "Run ml/training/train_classifier.py to generate metrics"
+      }
+    },
+    "forecasting": {
+      "claim": "MAE Rs.85.4 on active spend days, 72% confidence band coverage (two-stage hurdle model)",
+      "metrics": {
+        "mae": 564.4592245710011,
+        "rmse": 866.6476274936857,
+        "mape": 0.5053865207073053,
+        "validation_samples_nonzero": 3,
+        "target_mae_rs": 85.4,
+        "target_confidence_coverage": 0.72
+      }
+    },
+    "active_learning": {
+      "claim": "80%+ reduction in manual effort, budgeting time < 30 mins",
+      "metrics": {
+        "low_confidence_flagged": 0,
+        "corrections_captured": 0,
+        "completed_retraining_cycles": 0,
+        "target_effort_reduction_percent": 80.0,
+        "target_budgeting_time_minutes": 30
+      }
+    }
+  }
+}
