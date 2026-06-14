@@ -1,33 +1,96 @@
+# Virtual Environment
 .venv/
 venv/
 smartbudget/venv/
+ENV/
+env/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist/
+build/
+
+# Testing and Coverage
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+pytest-cache-files-*/
+htmlcov/
+.coverage
+*.cover
+.hypothesis/
 
-.env
-.env.*
-.env.example
-
-smartbudget/db.sqlite3
+# Database
+*.sqlite3
+*.db
 database/connection/*.db
 
+# Environment Variables
+.env
+.env.*
+.env.local
+.env.example
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node.js and Frontend
+node_modules/
+npm-debug.log
+yarn-error.log
+frontend/dist/
+frontend/build/
+
+# ML Model Artifacts (large files)
+ml/models/*.joblib
+ml/models/*.pkl
+ml/artifacts/
+*.h5
+*.pb
+
+# Data Files
 IO/
 temp/
 *.pdf
 *.xlsx
 *.csv
+ml/data/*.csv
+ml/data/
 
-.vscode/
-dist/
-build/
-pytest-cache-files-*/
-notebook
+# Temporary and Log Files
+*.tmp
+*.bak
+*.log
+*~
+notebook/
 imp_cmd.md
 helper.py
 Problems_curr.md
 mapping.py
+
+# Django
+*.pot
+/staticfiles/
+/media/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+notebook/db.sqlite3
